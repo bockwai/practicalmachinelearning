@@ -1,0 +1,75 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Bockwai"
+date: "January 21, 2016"
+output: html_document
+---
+#Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).  Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#dataset#ixzz3xoTP8YMc
+
+Read more: http://groupware.les.inf.puc-rio.br/har#dataset#ixzz3xoTIX0Xa
+
+#Loading, Exploring and Cleaning Data
+```{r}
+set.seed(1007)
+library(caret)
+if (!file.exists("pml-training.csv")){
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","pml-training.csv",method = "auto")
+}
+if (!file.exists("pml-testing.csv")){
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","pml-testing.csv",method = "auto")
+}    
+traindata = read.csv("pml-training.csv", na.strings = c("NA","","#DIV/0!")) #interpret all NA, empty space, and #DIV/0! as NA values.
+testdata = read.csv("pml-testing.csv", na.strings = c("NA","","#DIV/0!")) #interpret all NA, empty space, and #DIV/0! as NA values.
+str(traindata,list.len=20)
+prop.table(table(traindata$user_name, traindata$classe), 1)
+table(traindata$classe)
+##removing NA variables
+removenatraindata = traindata[,apply(traindata,2,function(x)!any(is.na(x)))]
+removenatestdata = testdata[,apply(testdata,2,function(x)!any(is.na(x)))]
+##remove first 7 variables related to user name, timestamps, and window
+cleanedtraindata = removenatraindata[,-c(1:7)]
+cleanedtestdata = removenatestdata[,-c(1:7)]
+```
+So our cleadedtraindata object is down to 53 variables:
+```{r}
+dim(cleanedtraindata)
+```
+
+# Cross Validation set up
+
+We will now split the cleanedtraindata into 2 sets.  One to train the model at 60% and one to test the model at 40%:
+
+```{r}
+crossvaltrain = createDataPartition(cleanedtraindata$classe,p=0.6,list = FALSE)
+training = cleanedtraindata[crossvaltrain,]
+testing = cleanedtraindata[-crossvaltrain,]
+str(training,list.len=5)
+```
+
+# Random Forest model
+
+We will now generate the Random Forest model with the training data set.  First will build the model with the training data, then we will test it with the testing data.
+
+```{r}
+trainmodel = train(classe ~ .,data = training,method='rf',trControl=trainControl(method = "cv",number = 4),allowParallel=TRUE,verbose=FALSE,proximity=TRUE,times=TRUE)
+trainmodel
+trainmodel$finalModel
+```
+
+Using 4 fold cross validation the training data is separated into 4 samples of approx equal size.  1 of those 4 samples is used only for testing the model and the other 3 are used for training the model.  After the model has been trained we can see the OOB est of error rate at only 0.74%, so the final model is extremely accurate and likely to have some overfit issues with the training data.
+
+We can now use the final model trained model on the testing data:
+
+```{r}
+predictionresults = predict(trainmodel,newdata=testing)
+confusionMatrix(predictionresults,testing$classe)
+```
+
+The results from applying the final model to the testing data reveals that again the accuracy is extremely high at 99.08% with a very tight 95% CI of 98.85%-99.28%.
+
+Credit attribution - The data for this project comes from this source: http://groupware.les.inf.puc-rio.br/har.
